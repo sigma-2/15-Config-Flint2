@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/ash
 # 02-aplicar-zero-trust-gestion.sh
 
 set -e
@@ -9,6 +9,7 @@ if [ -f /etc/init.d/uhttpd ]; then
   uci commit uhttpd
   /etc/init.d/uhttpd restart || true
 fi
+
 if [ -f /etc/init.d/dropbear ]; then
   uci set dropbear.@dropbear[0].Interface='admin60'
   uci commit dropbear
