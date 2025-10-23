@@ -140,13 +140,15 @@ uci set firewall.r_ping_a60.icmp_type='echo-request'
 uci set firewall.r_ping_a60.target='ACCEPT'
 
 # === DNS HIJACK: forzar todo 53 -> 192.168.20.2 (Pi-hole) =================
-# Esto aplica a lan10, family40, guest50, iot30, admin60, infra20
+# Esto aplica a lan10, family40, guest50, iot30, admin60
+# A infra20, para evitar loop infinito
+# (no aplicar en infra20 ni admin60 para no romper el propio Pi-hole ni la gestión)
 echo "[6/10] DNS Hijack..."
-for red in dns_hj_l10 dns_hj_f40 dns_hj_g50 dns_hj_i30 dns_hj_a60 dns_hj_s20; do safe_del firewall.$red; done
+for red in dns_hj_l10 dns_hj_f40 dns_hj_g50 dns_hj_i30; do safe_del firewall.$red; done
 mkhijack() {
   local name=$1 zone=$2
   uci set firewall.$name='redirect'
-  uci set firewall.$name.name="DNS-Hijack-$zone"
+  uci set firewall.$name.name="DNS-Hijack-$zone → Pi-hole"
   uci set firewall.$name.src="$zone"
   uci set firewall.$name.proto='tcp udp'
   uci set firewall.$name.src_dport='53'
@@ -154,13 +156,23 @@ mkhijack() {
   uci set firewall.$name.dest_ip='192.168.20.2'
   uci set firewall.$name.dest_port='53'
   uci set firewall.$name.target='DNAT'
+  uci set firewall.$name.reflection='0'          # sin hairpin
 }
 mkhijack dns_hj_l10 lan10
 mkhijack dns_hj_f40 family40
 mkhijack dns_hj_g50 guest50
 mkhijack dns_hj_i30 iot30
-mkhijack dns_hj_a60 admin60
-mkhijack dns_hj_s20 infra20
+
+# Asegura que infra20 puede salir a WAN (para que Pi-hole resuelva afuera)
+if ! uci -q show firewall | grep -q "f_infra20_wan=.*forwarding"; then
+  uci set firewall.f_infra20_wan='forwarding'
+  uci set firewall.f_infra20_wan.src='infra20'
+  uci set firewall.f_infra20_wan.dest='wan'
+fi
+
+# NAT en WAN (imprescindible si el router hace NAT)
+uci set firewall.wan.masq='1'
+uci set firewall.wan.mtu_fix='1'
 
 # === WAN: salida a Internet para zonas de usuario ==========================
 # ---------- Utilidades ----------
@@ -287,8 +299,13 @@ uci commit firewall
 
 # Reinicios
 echo "[10/10] Reinicando firewall..."
-/etc/init.d/firewall restart
-/etc/init.d/dnsmasq restart
+sleep 3
+(
+  sleep 10
+  /etc/init.d/dnsmasq restart
+  /etc/init.d/firewall restart
+) &
+
 
 echo "Zero-trust aplicado. Verifica conectividad."
 
