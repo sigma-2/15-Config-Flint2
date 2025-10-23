@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/ash
 # 01-config-inicial-luci.sh
 set -e
 
@@ -63,45 +63,6 @@ uci set network.vlan60.device='br-lan'
 uci set network.vlan60.vlan='60'
 uci add_list network.vlan60.ports='lan1:t'
 uci add_list network.vlan60.ports='lan5:u*'
-
-# Devices 802.1q (opcionales)
-for n in v10work v20infra v30iot v40fam v50guest v60admin; do safe_del network.$n; done
-
-uci set network.v10work='device'
-uci set network.v10work.type='8021q'
-uci set network.v10work.ifname='br-lan'
-uci set network.v10work.vid='10'
-uci set network.v10work.name='br-lan.10-work'
-
-uci set network.v20infra='device'
-uci set network.v20infra.type='8021q'
-uci set network.v20infra.ifname='br-lan'
-uci set network.v20infra.vid='20'
-uci set network.v20infra.name='br-lan.20-infra'
-
-uci set network.v30iot='device'
-uci set network.v30iot.type='8021q'
-uci set network.v30iot.ifname='br-lan'
-uci set network.v30iot.vid='30'
-uci set network.v30iot.name='br-lan.30-iot'
-
-uci set network.v40fam='device'
-uci set network.v40fam.type='8021q'
-uci set network.v40fam.ifname='br-lan'
-uci set network.v40fam.vid='40'
-uci set network.v40fam.name='br-lan.40-fam'
-
-uci set network.v50guest='device'
-uci set network.v50guest.type='8021q'
-uci set network.v50guest.ifname='br-lan'
-uci set network.v50guest.vid='50'
-uci set network.v50guest.name='br-lan.50-guest'
-
-uci set network.v60admin='device'
-uci set network.v60admin.type='8021q'
-uci set network.v60admin.ifname='br-lan'
-uci set network.v60admin.vid='60'
-uci set network.v60admin.name='br-lan.60-admin'
 
 # Interfaces L3
 for i in lan10 infra20 iot30 family40 guest50 admin60; do safe_del network.$i; done
@@ -234,7 +195,7 @@ for idx in $(uci show firewall | grep "=zone" | cut -d. -f3 | cut -d= -f1); do
 done
 
 # Zonas nuevas
-for z in lan10 infra20 iot30 family40 guest50 admin60; do safe_del firewall.$z: done
+for z in lan10 infra20 iot30 family40 guest50 admin60; do safe_del firewall.$z; done
 
 uci set firewall.lan10='zone'
 uci set firewall.lan10.name='lan10'
