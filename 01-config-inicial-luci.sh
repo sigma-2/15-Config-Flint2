@@ -172,6 +172,57 @@ uci set dhcp.admin60.ignore='0'
 uci set dhcp.admin60.dhcpv6='disabled'
 uci set dhcp.admin60.ra='disabled'
 
+# --- Reservas DHCP (static leases) ---
+# Colocar este bloque tras crear las secciones dhcp.<vlan> y ANTES de 'uci commit dhcp'
+
+# Limpieza idempotente (por nombre de sección)
+for s in host_gs308t host_raspberry host_truenas host_ds918_lan1 host_ds918_lan2 host_n2ha; do
+  safe_del dhcp.$s
+done
+
+# GS308T (admin60)
+uci set dhcp.host_gs308t='host'
+uci set dhcp.host_gs308t.name='Netgear-GS308T.switch'
+uci set dhcp.host_gs308t.mac='80:CC:9C:9A:9E:85'
+uci set dhcp.host_gs308t.ip='192.168.60.2'
+uci set dhcp.host_gs308t.leasetime='infinite'
+
+# Raspberry Pi-hole (infra20)
+uci set dhcp.host_raspberry='host'
+uci set dhcp.host_raspberry.name='Raspberry'
+uci set dhcp.host_raspberry.mac='B8:27:EB:43:8B:7F'
+uci set dhcp.host_raspberry.ip='192.168.20.2'
+uci set dhcp.host_raspberry.leasetime='infinite'
+
+# TrueNAS (infra20)
+uci set dhcp.host_truenas='host'
+uci set dhcp.host_truenas.name='TrueNAS'
+uci set dhcp.host_truenas.mac='00:D8:61:C1:74:A8'
+uci set dhcp.host_truenas.ip='192.168.20.3'
+uci set dhcp.host_truenas.leasetime='infinite'
+
+# DS918+ LAN1 (infra20)
+uci set dhcp.host_ds918_lan1='host'
+uci set dhcp.host_ds918_lan1.name='DS918-LAN1'
+uci set dhcp.host_ds918_lan1.mac='00:11:32:7E:D6:73'
+uci set dhcp.host_ds918_lan1.ip='192.168.20.4'
+uci set dhcp.host_ds918_lan1.leasetime='infinite'
+
+# DS918+ LAN2 (infra20)
+uci set dhcp.host_ds918_lan2='host'
+uci set dhcp.host_ds918_lan2.name='DS918-LAN2'
+uci set dhcp.host_ds918_lan2.mac='00:11:32:7E:D6:74'
+uci set dhcp.host_ds918_lan2.ip='192.168.20.5'
+uci set dhcp.host_ds918_lan2.leasetime='infinite'
+
+# N2+ Home Assistant (iot30)
+uci set dhcp.host_n2ha='host'
+uci set dhcp.host_n2ha.name='N2-HA'
+uci set dhcp.host_n2ha.mac='00:1E:06:42:6A:34'
+uci set dhcp.host_n2ha.ip='192.168.30.2'
+uci set dhcp.host_n2ha.leasetime='infinite'
+
+uci commit dhcp
 
 echo "[3/5] FIREWALL: limpiar restos GL.iNet y crear zonas nuevas..."
 # Elimina zonas heredadas molestas
