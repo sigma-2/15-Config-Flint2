@@ -394,7 +394,17 @@ uci set firewall.r_guest50_dns.target='ACCEPT'
 
 uci commit firewall
 
-echo "[4/5] REINICIOS en orden..."
-/etc/init.d/network restart
-/etc/init.d/dnsmasq restart
-/etc/init.d/firewall restart
+#echo "[4/5] REINICIOS en orden..."
+#/etc/init.d/network restart
+#/etc/init.d/dnsmasq restart
+#/etc/init.d/firewall restart
+
+echo "[4/5] Programando reinicios en 10 segundos..."
+sleep 3
+(
+  sleep 10
+  /etc/init.d/network restart
+  sleep 5
+  /etc/init.d/dnsmasq restart
+  /etc/init.d/firewall restart
+) &
