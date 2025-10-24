@@ -313,6 +313,18 @@ uci set firewall.r_a60_ssh_ha.proto='tcp'
 uci set firewall.r_a60_ssh_ha.dest_port='22'
 uci set firewall.r_a60_ssh_ha.target='ACCEPT'
 
+# Reasignar Forward de dns de IOT30 a PIHOLE.
+# Por algúnmotivo en esta VLAN falla.
+uci add firewall rule
+uci set firewall.@rule[-1].name='Allow-DNS-IoT-to-Infra'
+uci set firewall.@rule[-1].src='iot30'
+uci set firewall.@rule[-1].dest='infra20'
+uci set firewall.@rule[-1].dest_ip='192.168.20.2'
+uci set firewall.@rule[-1].proto='tcp udp'
+uci set firewall.@rule[-1].dest_port='53'
+uci set firewall.@rule[-1].target='ACCEPT'
+uci set firewall.@rule[-1].family='ipv4'
+
 echo "[9/10] Guardando cambios..."
 uci commit dhcp
 uci commit firewall
