@@ -103,6 +103,8 @@ uci set firewall.admin60.output='ACCEPT'
 uci set firewall.admin60.forward='REJECT'
 uci add_list firewall.admin60.network='admin60'
 
+
+
 # === BÁSICAS: DHCP para todas las VLAN (el router da DHCP) ================
 echo "[4/10] DHCP para todas las vlan..."
 for r in r_all_dhcp_l10 r_all_dhcp_s20 r_all_dhcp_i30 r_all_dhcp_f40 r_all_dhcp_g50 r_all_dhcp_a60; do safe_del firewall.$r; done
@@ -170,9 +172,6 @@ if ! uci -q show firewall | grep -q "f_infra20_wan=.*forwarding"; then
   uci set firewall.f_infra20_wan.dest='wan'
 fi
 
-# NAT en WAN (imprescindible si el router hace NAT)
-uci set firewall.wan.masq='1'
-uci set firewall.wan.mtu_fix='1'
 
 # === WAN: salida a Internet para zonas de usuario ==========================
 # ---------- Utilidades ----------
