@@ -21,16 +21,13 @@ echo "[1/10] Anunciando pi-hole..."
 # Anunciar Pi-hole (192.168.20.2) como DNS en todas las VLAN
 for IF in lan10 infra20 iot30 family40 guest50 admin60; do
   uci -q delete dhcp.$IF.dhcp_option || true
+  # (Opcional “anti-leaks”) Desactivar RA/DHCPv6 si no usas IPv6 interno
+  uci set dhcp.$IF.dhcpv6='disabled'
+  uci set dhcp.$IF.ra='disabled'
   # DHCP option 6 = DNS servidores (separados por coma)
   uci add_list dhcp.$IF.dhcp_option='6,192.168.20.2'
 done
 
-# (Opcional “anti-leaks”) Desactivar RA/DHCPv6 si no usas IPv6 interno
-for IF in lan10 infra20 iot30 family40 guest50 admin60; do
-  uci set dhcp.$IF.dhcpv6='disabled'
-  uci set dhcp.$IF.ra='disabled'
-  uci add_list dhcp.$IF.dhcp_option='6,192.168.20.2,192.168.20.3'
-done
 
 uci commit dhcp
 /etc/init.d/dnsmasq restart
@@ -107,14 +104,16 @@ uci add_list firewall.admin60.network='admin60'
 
 # === BÁSICAS: DHCP para todas las VLAN (el router da DHCP) ================
 echo "[4/10] DHCP para todas las vlan..."
-for r in r_all_dhcp_l10 r_all_dhcp_s20 r_all_dhcp_i30 r_all_dhcp_f40 r_all_dhcp_g50 r_all_dhcp_a60; do safe_del firewall.$r; done
+# 1) Repara la línea mordida y asegura regla DHCP por VLAN (solo IPv4)
+for r in r_all_dhcp_l10 r_all_dhcp_s20 r_all_dhcp_i30 r_all_dhcp_f40 r_all_dhcp_g50 r_all_dhcp_a60; do uci -q delete firewall.$r; done
 mkdhcp() {
   local name=$1 zone=$2
   uci set firewall.$name='rule'
   uci set firewall.$name.name="Allow-DHCP-$zone"
   uci set firewall.$name.src="$zone"
+  uci set firewall.$name.family='ipv4'
   uci set firewall.$name.proto='udp'
-  uci set firewall.$name.dest_port='67-68'
+  uci set firewall.$name.dest_port='67'   # (entrada al router)
   uci set firewall.$name.target='ACCEPT'
 }
 mkdhcp r_all_dhcp_l10 lan10
@@ -123,6 +122,27 @@ mkdhcp r_all_dhcp_i30 iot30
 mkdhcp r_all_dhcp_f40 family40
 mkdhcp r_all_dhcp_g50 guest50
 mkdhcp r_all_dhcp_a60 admin60
+
+# 2) (Opcional) ACL ICMP claras (solo si quieres ping en l10/a60)
+for r in r_ping_l10 r_ping_a60; do uci -q delete firewall.$r; done
+uci set firewall.r_ping_l10='rule'
+uci set firewall.r_ping_l10.name='Allow-Ping-lan10'
+uci set firewall.r_ping_l10.src='lan10'
+uci set firewall.r_ping_l10.family='ipv4'
+uci set firewall.r_ping_l10.proto='icmp'
+uci set firewall.r_ping_l10.icmp_type='echo-request'
+uci set firewall.r_ping_l10.target='ACCEPT'
+uci set firewall.r_ping_a60='rule'
+uci set firewall.r_ping_a60.name='Allow-Ping-admin60'
+uci set firewall.r_ping_a60.src='admin60'
+uci set firewall.r_ping_a60.family='ipv4'
+uci set firewall.r_ping_a60.proto='icmp'
+uci set firewall.r_ping_a60.icmp_type='echo-request'
+uci set firewall.r_ping_a60.target='ACCEPT'
+
+# 4) (Recomendado) Asegura que dnsmasq escucha en todas las VLAN previstas
+uci set dhcp.@dnsmasq[0].interface='lan10,infra20,iot30,family40,guest50,admin60'
+
 
 echo "[5/10] DHCP para todas las vlan..."
 # (Opcional) Permitir ping al router desde LAN10 y ADMIN60 (útil para diagnóstico)
@@ -294,17 +314,13 @@ uci set firewall.r_a60_ssh_ha.dest_port='22'
 uci set firewall.r_a60_ssh_ha.target='ACCEPT'
 
 echo "[9/10] Guardando cambios..."
+uci commit dhcp
 uci commit firewall
 
 # Reinicios
 echo "[10/10] Reinicando firewall..."
-sleep 3
-(
-  sleep 10
-  /etc/init.d/dnsmasq restart
-  /etc/init.d/firewall restart
-) &
-
+/etc/init.d/dnsmasq restart
+/etc/init.d/firewall restart
 
 echo "Zero-trust aplicado. Verifica conectividad."
 
