@@ -290,6 +290,27 @@ uci set firewall.admin60.output='ACCEPT'
 uci set firewall.admin60.forward='REJECT'
 uci add_list firewall.admin60.network='admin60'
 
+# --- Asegurar zona WAN presente y con NAT ---
+# Crea la zona 'wan' si no existe todavía
+if ! uci show firewall | grep -q "=.zone" -A1 | grep -q "name='wan'"; then
+  uci add firewall zone
+  uci set firewall.@zone[-1].name='wan'
+  uci set firewall.@zone[-1].input='REJECT'
+  uci set firewall.@zone[-1].output='ACCEPT'
+  uci set firewall.@zone[-1].forward='REJECT'
+fi
+
+# Activa NAT/MTU fix en la zona 'wan' (sea cual sea su índice)
+uci show firewall | awk -F'[.=]' '/=zone$/{sec=$3} /\.name=.wan$/{print sec}' \
+| while read Z; do
+    uci set firewall.@zone[$Z].masq='1'
+    uci set firewall.@zone[$Z].mtu_fix='1'
+    # Asocia las redes 'wan' / 'wan6' si existen en /etc/config/network
+    uci -q get network.wan.proto  >/dev/null && uci add_list firewall.@zone[$Z].network='wan'
+    uci -q get network.wan6.proto >/dev/null && uci add_list firewall.@zone[$Z].network='wan6'
+  done
+
+
 # Forwardings
 for f in f_lan10_infra20 f_lan10_iot30 f_lan10_family40 f_lan10_guest50 f_lan10_wan \
          f_infra20_lan10 f_infra20_wan \
