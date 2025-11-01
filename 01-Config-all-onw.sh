@@ -373,9 +373,8 @@ ensure_forwarding() {
 }
 
 allow_wan_generic() {
-  ensure_forwarding f_lan10_wan   'lan10'   'wan'
-  ensure_forwarding f_infra20_wan 'infra20' 'wan'
-  ensure_forwarding f_family40_wan 'family40' 'wan'
+  # ensure_forwarding f_lan10_wan   'lan10'   'wan' #->moved to strict
+  # ensure_forwarding f_infra20_wan 'infra20' 'wan' #->moved to strict
   ensure_forwarding f_admin60_wan  'admin60' 'wan'
 }
 
@@ -405,10 +404,19 @@ allow_ntp() {
 
 
 allow_wan_strict() {
-  for r in allow_strict_iot30_https allow_strict_guest50_https allow_strict_iot30_ntp allow_strict_guest50_ntp; do safe_del firewall.$r; done
+  # https
+  for r in allow_strict_lan10_https allow_strict_infra20_https allow_strict_iot30_https allow_strict_family40_https allow_strict_guest50_https; do safe_del firewall.$r; done
+  allow_https allow_strict_lan10_https 'lan10'
+  allow_https allow_strict_infra20_https 'infra20'
   allow_https allow_strict_iot30_https 'iot30'
+  allow_https allow_strict_family40_https 'family40'
   allow_https allow_strict_guest50_https 'guest50'
+  # ntp
+  for r in allow_strict_lan10_ntp allow_strict_infra20_ntp allow_strict_iot30_ntp allow_strict_family40_ntp allow_strict_guest50_ntp; do safe_del firewall.$r; done
+  allow_ntp allow_strict_lan10_ntp 'lan10'
+  allow_ntp allow_strict_infra20_ntp 'infra20'
   allow_ntp allow_strict_iot30_ntp 'iot30'
+  allow_ntp allow_strict_family40_ntp 'family40'
   allow_ntp allow_strict_guest50_ntp 'guest50'
 }
 
@@ -503,14 +511,27 @@ mkhijack dns_hj_iot30 iot30
 mkhijack dns_hj_fam40 family40
 mkhijack dns_hj_guest50 guest50
 
+############################################################################
+# PERMITIR DNS SALIENTE PARA PI-HOLE (INFRA20)
+############################################################################
+echo "[13/..] FIREWALL: PERMITIR DNS SALIENTE para Pi-hole..."
+safe_del firewall.allow_infra20_dns_wan
+uci set firewall.allow_infra20_dns_wan='rule'
+uci set firewall.allow_infra20_dns_wan.name='a_Infra20-to-WAN-DNS'
+uci set firewall.allow_infra20_dns_wan.src='infra20'
+uci set firewall.allow_infra20_dns_wan.dest='wan'
+uci set firewall.allow_infra20_dns_wan.proto='tcp udp'
+uci set firewall.allow_infra20_dns_wan.dest_port='53'
+uci set firewall.allow_infra20_dns_wan.target='ACCEPT'
+
 
 ############################################################################
 # SSH
 ############################################################################
 
-echo "[13/..] FIREWALL: SSH..."
+echo "[14/..] FIREWALL: SSH..."
 
-for red in a_ssh_lan10_to_infra20 a_ssh_admin60_to_infra20 a_ssh_lan10_to_iot30 a_ssh_admin60_to_iot30; do safe_del firewall.$red; done
+for red in a_ssh_lan10_to_infra20 a_ssh_admin60_to_infra20 a_ssh_admin60_to_iot30; do safe_del firewall.$red; done
 
 allow_ssh_to_() {
   local name=$1 src=$2 dest=$3 dest_ip=$4   # dest_ip opcional: limita a host concreto
@@ -525,135 +546,63 @@ allow_ssh_to_() {
 }
 
 allow_ssh_to_ a_ssh_lan10_to_infra20 'lan10' 'infra20'
-allow_ssh_to_ a_ssh_lan10_to_iot30 'lan10' 'iot30'
+#allow_ssh_to_ a_ssh_lan10_to_iot30 'lan10' 'iot30' -> Limitamos SSH a iot desde admin60
 allow_ssh_to_ a_ssh_admin60_to_infra20 'admin60' 'infra20'
 allow_ssh_to_ a_ssh_admin60_to_iot30 'admin60' 'iot30'
 
 
+echo "[15/..] FIREWALL: BLOQUEAR SSH DENTRO DE IOT30..."
+safe_del firewall.no_intra_iot30_ssh
+uci set firewall.no_intra_iot30_ssh='rule'
+uci set firewall.no_intra_iot30_ssh.name='Block-Intra-IoT30-SSH'
+uci set firewall.no_intra_iot30_ssh.src='iot30'
+uci set firewall.no_intra_iot30_ssh.dest='iot30'
+uci set firewall.no_intra_iot30_ssh.proto='tcp'
+uci set firewall.no_intra_iot30_ssh.dest_port='22'
+uci set firewall.no_intra_iot30_ssh.target='DROP'
+
+
 ############################################################################
-# SERVICIOS EN INFRA20
+# CLOUDFLARE
 ############################################################################
+echo "[16/..] FIREWALL: PUERTOS CLOUDFLARE INFRA20 - TCP/UDP..."
 
-# Normaliza nombres a [a-z0-9_], útil para claves UCI
-norm_name() {
-  printf '%s' "$1" | tr '[:upper:] ' '[:lower:]_' | sed -E 's/[^a-z0-9_]+/_/g'
-}
+# 1. Regla TCP: Permite 443 y 7844 (para control, fallbacks y http/https general)
+safe_del firewall.allow_infra20_cf_tunnel_tcp
+uci set firewall.allow_infra20_cf_tunnel_tcp='rule'
+uci set firewall.allow_infra20_cf_tunnel_tcp.name='a_Infra20-CF-Tunnel-TCP'
+uci set firewall.allow_infra20_cf_tunnel_tcp.src='infra20'
+uci set firewall.allow_infra20_cf_tunnel_tcp.dest='wan'
+uci set firewall.allow_infra20_cf_tunnel_tcp.proto='tcp'
+uci set firewall.allow_infra20_cf_tunnel_tcp.dest_port='443 7844'
+uci set firewall.allow_infra20_cf_tunnel_tcp.target='ACCEPT'
 
-allow_service() {
-  # allow_service "NAME" SRC_ZONE DEST_ZONE "tcp udp|tcp|udp|icmp" "PUERTOS|''" [DEST_IPS...] [COMMENT]
-  # Ejemplos de PUERTOS: "80 443" | "22" | "67-68"
-  local name="$1" src="$2" dst="$3" proto="$4" dports="$5"; shift 5
-  local key="r_$(norm_name "$name")"
-
-  # Resto de args: dest_ips opcionales (uno o varios) + comment opcional marcado con prefix "comment:"
-  # p.ej.: allow_service "SSH lan10→infra20" lan10 infra20 tcp 22 192.168.20.3 comment:"solo NAS"
-  local dest_ips=() comment=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      comment:*) comment="${1#comment:}";;
-      *) dest_ips+=("$1");;
-    esac
-    shift
-  done
-
-  # Validaciones mínimas
-  [ -n "$name" ] || { echo "allow_service: NAME vacío" >&2; return 1; }
-  [ -n "$src"  ] || { echo "allow_service: SRC vacío"  >&2; return 1; }
-  [ -n "$dst"  ] || { echo "allow_service: DEST vacío" >&2; return 1; }
-  [ -n "$proto"] || { echo "allow_service: PROTO vacío" >&2; return 1; }
-
-  # Si incluye icmp, no pongas puertos
-  case "$proto" in
-    *icmp*) dports="";;
-  esac
-
-  safe_del "firewall.$key"
-  uci set "firewall.$key=rule" || return 1
-  uci set "firewall.$key.name=$name"
-  uci set "firewall.$key.src=$src"
-  uci set "firewall.$key.dest=$dst"
-  uci set "firewall.$key.target=ACCEPT"
-  uci set "firewall.$key.family=ipv4"
-  uci set "firewall.$key.enabled='1'"
-
-  [ -n "$proto"  ] && uci set "firewall.$key.proto=$proto"
-  [ -n "$dports" ] && uci set "firewall.$key.dest_port=$dports"
-
-  # dest_ip: soporta 0..N
-  if [ ${#dest_ips[@]} -gt 0 ]; then
-    for ip in "${dest_ips[@]}"; do
-      uci add_list "firewall.$key.dest_ip=$ip"
-    done
-  fi
-
-  [ -n "$comment" ] && uci set "firewall.$key.comment=$comment"
-}
-
-# ---------- Parámetros de tu red ----------
-PIHOLE_IP="192.168.20.2"
-NAS_IP="192.168.20.3"
-ALL_ZONES="lan10 infra20 iot30 family40 guest50 admin60"
-
-echo "[14/..] FAMILY40 → Jellyfin en NAS ($NAS_IP:8096/8920)…"
-allow_service "Allow-Web-FAM40-to-Jellyfin" "family40" "infra20" "tcp" "8096 8920" "$NAS_IP" "Jellyfin en NAS"
-
-echo "[15/..] LAN10/FAMILY40 → Samba en NAS ($NAS_IP)…"
-# TCP 445/139
-allow_service "Allow-SMB-TCP-LAN10-to-NAS"   "lan10"    "infra20" "tcp" "445 139" "$NAS_IP" "SMB TCP LAN10 -> NAS"
-allow_service "Allow-SMB-TCP-FAM40-to-NAS"   "family40" "infra20" "tcp" "445 139" "$NAS_IP" "SMB TCP FAM40 -> NAS"
-# UDP 137/138 (opcional; desactiva si no necesitas NetBIOS discovery)
-allow_service "Allow-SMB-UDP-LAN10-to-NAS"   "lan10"    "infra20" "udp" "137 138" "$NAS_IP" "SMB UDP LAN10 -> NAS"
-allow_service "Allow-SMB-UDP-FAM40-to-NAS"   "family40" "infra20" "udp" "137 138" "$NAS_IP" "SMB UDP FAM40 -> NAS"
-
-echo "[16/..] LAN10 NFS NAS ($NAS_IP)…"
-# Sustituye 192.168.20.3 por la IP de tu NAS en infra20
-allow_service "NFSv4 lan10→NAS" lan10 infra20 tcp 2049 192.168.20.3 comment:"NFSv4 only"
-# Si NFSv3
-#allow_service "nfsd 2049 lan10→NAS"   lan10 infra20 "tcp udp" 2049 192.168.20.3
-#allow_service "rpcbind 111 lan10→NAS" lan10 infra20 "tcp udp" 111  192.168.20.3
-#allow_service "mountd 20048 lan10→NAS" lan10 infra20 "tcp udp" 20048 192.168.20.3
-# Nota: en NFSv3 mountd/lockd/statd pueden ir en puertos variables.
-# Fíjalos en el NAS para que no bailen (p.ej., mountd=20048, lockd=4045, statd=32765-32766, rquotad=875)
-# y añade reglas si los usas:
-#allow_service "lockd 4045 lan10→NAS"   lan10 infra20 "tcp udp" 4045 192.168.20.3
-#allow_service "statd 32765-32766 lan10→NAS" lan10 infra20 "tcp udp" "32765 32766" 192.168.20.3
-#allow_service "rquotad 875 lan10→NAS"  lan10 infra20 "tcp udp" 875  192.168.20.3
-
-
-# Solo si quieres admin60 con vía libre a todas las zonas
-for z in lan10 infra20 iot30 family40 guest50 wan; do
-  uci add firewall forwarding
-  uci set firewall.@forwarding[-1].src='admin60'
-  uci set firewall.@forwarding[-1].dest="$z"
-done
+# 2. Regla UDP: Permite 7844 (para el protocolo QUIC, recomendado por Cloudflare)
+safe_del firewall.allow_infra20_cf_tunnel_udp
+uci set firewall.allow_infra20_cf_tunnel_udp='rule'
+uci set firewall.allow_infra20_cf_tunnel_udp.name='a_Infra20-CF-Tunnel-UDP'
+uci set firewall.allow_infra20_cf_tunnel_udp.src='infra20'
+uci set firewall.allow_infra20_cf_tunnel_udp.dest='wan'
+uci set firewall.allow_infra20_cf_tunnel_udp.proto='udp'
+uci set firewall.allow_infra20_cf_tunnel_udp.dest_port='7844'
+uci set firewall.allow_infra20_cf_tunnel_udp.target='ACCEPT'
 
 
 
-
-# Comprueba si existe un forwarding src->dest (para evitar duplicados)
-# NOTA: Esta función DEBE existir en una sección previa del script
-# has_forwarding() { ... }
-
-# Crea un forwarding sólo si no existe ya el par src->dest
-# NOTA: Esta función DEBE existir en una sección previa del script
-# ensure_forwarding() { ... }
-
-echo "[17/..] FIREWALL: Configurando acceso completo de admin60 a todas las zonas..."
-
-# Solo si quieres admin60 con vía libre a todas las zonas
-for z in lan10 infra20 iot30 family40 guest50 wan; do
-  # El nombre de la sección UCI se genera de forma descriptiva
-  NAME="f_admin60_to_$z" 
-  SRC='admin60'
-  DEST="$z"
-  
-  # Usamos la función ensure_forwarding para evitar duplicados
-  ensure_forwarding "$NAME" "$SRC" "$DEST"
-done
+############################################################################
+# BORRAR LAN
+############################################################################
+# 1. Elimina la sección de la zona de firewall en el índice [0]
+uci delete firewall.@zone[0]
+# 2. Guarda los cambios
+#uci commit firewall
+# 3. Reinicia el firewall para aplicar la limpieza
+#/etc/init.d/firewall restart
 
 uci commit network
 uci commit dhcp
 uci commit firewall
+
 echo "[17/..] Programando reinicios en 10 segundos..."
 sleep 3
 (
